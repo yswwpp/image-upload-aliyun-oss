@@ -10,7 +10,6 @@ export default class AliyunOSSUploadPlugin extends Plugin {
   settings: AliyunOSSPluginSettings;
   private ossService: OSSService | null = null;
   private activeNotices: Map<string, Notice> = new Map();
-  private eventListeners: Array<{element: EventTarget, type: string, handler: any}> = [];
 
   async onload() {
     console.log("Aliyun OSS Upload 插件已加载");
@@ -71,19 +70,23 @@ export default class AliyunOSSUploadPlugin extends Plugin {
 
   /**
    * 处理粘贴事件 - 在捕获阶段拦截
+   * ⚠️ 关键：只在有图片时才拦截，纯文本粘贴必须放行！
    */
   private async handlePaste(event: ClipboardEvent): Promise<void> {
-    // 立即阻止默认行为和传播
-    event.preventDefault();
-    event.stopPropagation();
-
     // 检查是否有剪贴板数据
     if (!event.clipboardData?.items) return;
 
     const items = Array.from(event.clipboardData.items);
     const imageItems = items.filter((item) => item.type.startsWith("image/"));
 
-    if (imageItems.length === 0) return;
+    // ⚠️ 关键修复：如果没有图片，立即返回，让 Obsidian 正常处理文本粘贴
+    if (imageItems.length === 0) {
+      return; // 不调用 preventDefault，让默认行为继续
+    }
+
+    // 只有在有图片时才拦截
+    event.preventDefault();
+    event.stopPropagation();
 
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!activeView) {

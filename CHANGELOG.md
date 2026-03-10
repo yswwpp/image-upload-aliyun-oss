@@ -351,3 +351,89 @@ const fileUrl = `https://${host}/${objectKey}`;  // ✅ 正确
 - ✅ 便于手动编辑
 
 ---
+
+---
+
+## v1.2.3 (2026-03-10) - 紧急修复：无法粘贴文本问题
+
+### 🐛 严重 Bug 修复
+
+#### 修复无法粘贴纯文本的问题
+
+**问题描述**：
+- ❌ 无法粘贴纯文本内容
+- ❌ 复制的文字无法粘贴到文档
+- ❌ 插件拦截了所有 paste 事件
+
+**根本原因**：
+```typescript
+// ❌ 错误代码：在检查图片前就调用了 preventDefault
+private async handlePaste(event: ClipboardEvent): Promise<void> {
+  event.preventDefault();  // ❌ 太早了！
+  event.stopPropagation();
+  
+  // ... 后续检查
+  if (imageItems.length === 0) return;  // 已经太晚了
+}
+```
+
+**修复方案**：
+```typescript
+// ✅ 正确代码：先检查，有图片才拦截
+private async handlePaste(event: ClipboardEvent): Promise<void> {
+  if (!event.clipboardData?.items) return;
+  
+  const items = Array.from(event.clipboardData.items);
+  const imageItems = items.filter((item) => item.type.startsWith("image/"));
+  
+  // ✅ 关键：没有图片时立即返回，不拦截
+  if (imageItems.length === 0) {
+    return; // 让 Obsidian 正常处理文本粘贴
+  }
+  
+  // ✅ 只有在有图片时才拦截
+  event.preventDefault();
+  event.stopPropagation();
+  
+  // ... 处理图片上传
+}
+```
+
+### 📝 测试验证
+
+**测试场景**：
+
+| 操作 | 修复前 | 修复后 |
+|------|--------|--------|
+| 复制文字 → 粘贴 | ❌ 无法粘贴 | ✅ 正常粘贴 |
+| 复制图片 → 粘贴 | ✅ 上传 OSS | ✅ 上传 OSS |
+| 复制网页（文字 + 图片） | ❌ 仅图片 | ✅ 文字 + 图片都正常 |
+| 截图 → 粘贴 | ✅ 上传 OSS | ✅ 上传 OSS |
+
+**测试步骤**：
+1. 复制一段文字（如："测试文本"）
+2. 在 Obsidian 中按 Cmd+V / Ctrl+V
+3. **预期**：文字正常粘贴到文档
+4. 复制一张图片
+5. 在 Obsidian 中按 Cmd+V / Ctrl+V
+6. **预期**：图片上传到 OSS 并插入链接
+
+### 📊 影响范围
+
+| 功能 | v1.2.2 | v1.2.3 |
+|------|--------|--------|
+| 纯文本粘贴 | ❌ 无法使用 | ✅ 正常 |
+| 图片粘贴 | ✅ 正常 | ✅ 正常 |
+| 混合内容 | ❌ 部分丢失 | ✅ 正常 |
+| 文本编辑体验 | ❌ 差 | ✅ 好 |
+
+### ⚠️ 重要提示
+
+此修复解决了影响基本编辑功能的问题，**强烈建议所有用户更新**！
+
+**更新后请测试**：
+- [ ] 复制文字 → 粘贴 → 正常显示
+- [ ] 复制图片 → 粘贴 → 上传到 OSS
+- [ ] 日常文本编辑不受影响
+
+---
