@@ -437,3 +437,99 @@ private async handlePaste(event: ClipboardEvent): Promise<void> {
 - [ ] 日常文本编辑不受影响
 
 ---
+
+---
+
+## v1.2.4 (2026-03-10) - 终极修复：paste 事件流问题
+
+### 🐛 根本原因分析
+
+**问题**：即使 v1.2.3 在检查图片前就 return，仍然无法粘贴文本。
+
+**根本原因**：
+- `paste` 事件在**捕获阶段**注册（`useCapture: true`）
+- 即使在 handler 中直接 return，事件监听器本身就会影响事件流
+- 浏览器的事件机制：捕获阶段的监听器会改变事件传播行为
+
+### ✅ 终极修复方案
+
+**事件流知识**：
+```
+1. 捕获阶段：window → document → target
+2. 目标阶段：target 本身
+3. 冒泡阶段：target → document → window
+```
+
+**修复代码**：
+```typescript
+// ❌ 修复前：捕获阶段（会影响事件流）
+this.registerDomEvent(window, "paste", this.handlePaste.bind(this), true);
+//                                                                ^^^^
+
+// ✅ 修复后：冒泡阶段（不影响正常事件流）
+this.registerDomEvent(window, "paste", this.handlePaste.bind(this), false);
+//                                                                 ^^^^^
+
+// drop 事件仍然使用捕获阶段（必须，要阻止 Obsidian 保存本地文件）
+this.registerDomEvent(window, "drop", this.handleDrop.bind(this), true);
+//                                                                ^^^^
+```
+
+### 📊 事件流对比
+
+**修复前（捕获阶段）**：
+```
+window (捕获) ← 我们的监听器在这里
+  ↓             即使 return，事件流已被干扰
+document (捕获)
+  ↓
+editor (目标) → Obsidian 尝试处理粘贴
+  ↓
+结果：纯文本粘贴可能失败
+```
+
+**修复后（冒泡阶段）**：
+```
+window (捕获)
+  ↓
+document (捕获)
+  ↓
+editor (目标) → Obsidian 正常处理粘贴 ✅
+  ↓             纯文本已完成粘贴
+document (冒泡)
+  ↓
+window (冒泡) ← 我们的监听器在这里
+                如果有图片，阻止默认行为并上传
+                如果没有图片，完全不影响
+结果：纯文本正常，图片也能上传 ✅
+```
+
+### 📝 测试验证
+
+| 场景 | v1.2.3 | v1.2.4 |
+|------|--------|--------|
+| 纯文本粘贴 | ⚠️ 可能失败 | ✅ 完全正常 |
+| 图片粘贴 | ✅ 正常 | ✅ 正常 |
+| 混合内容 | ⚠️ 可能失败 | ✅ 完全正常 |
+| 事件流干扰 | ⚠️ 有 | ✅ 无 |
+
+### 🔧 技术细节
+
+**为什么 drop 仍然用捕获阶段？**
+- Obsidian 在目标阶段会保存拖拽的文件到本地
+- 必须在捕获阶段就阻止，否则文件已经被保存了
+- 拖拽事件只有文件，没有纯文本，所以不影响
+
+**为什么 paste 要用冒泡阶段？**
+- Obsidian 在目标阶段处理文本粘贴
+- 我们让 Obsidian 先处理（目标阶段）
+- 如果有图片，在冒泡阶段拦截并上传
+- 如果没有图片，完全不影响 Obsidian 的处理
+
+### ⚠️ 重要提示
+
+这是关于 paste 事件的**第三次修复**，这次从事件流的根本上解决了问题。
+
+**强烈建议所有用户更新**，尤其是经常使用文本粘贴的用户！
+
+---

@@ -22,13 +22,15 @@ export default class AliyunOSSUploadPlugin extends Plugin {
     // 添加设置界面
     this.addSettingTab(new AliyunOSSSettingTab(this.app, this));
 
-    // 注册拖拽图片处理 - 使用捕获阶段
+    // 注册拖拽图片处理 - 使用捕获阶段（必须，因为要阻止 Obsidian 保存本地文件）
     this.registerDomEvent(window, "drop", this.handleDrop.bind(this), true);
 
-    // 注册粘贴图片处理 - 使用捕获阶段
-    this.registerDomEvent(window, "paste", this.handlePaste.bind(this), true);
+    // ⚠️ 关键修复：paste 事件不使用捕获阶段！
+    // 在捕获阶段注册即使 return 也会影响事件流
+    // 改用冒泡阶段，只在有图片时才拦截
+    this.registerDomEvent(window, "paste", this.handlePaste.bind(this), false);
 
-    console.log("Aliyun OSS Upload 插件初始化完成（支持拖拽和粘贴，已启用事件捕获）");
+    console.log("Aliyun OSS Upload 插件初始化完成（支持拖拽和粘贴）");
   }
 
   onunload() {
@@ -69,8 +71,16 @@ export default class AliyunOSSUploadPlugin extends Plugin {
   }
 
   /**
-   * 处理粘贴事件 - 在捕获阶段拦截
-   * ⚠️ 关键：只在有图片时才拦截，纯文本粘贴必须放行！
+   * 处理粘贴事件 - 在冒泡阶段拦截（关键修复！）
+   * 
+   * 事件流：
+   * 1. 捕获阶段：从 window 到 target
+   * 2. 目标阶段：target 本身
+   * 3. 冒泡阶段：从 target 到 window ← 我们在这里拦截
+   * 
+   * 好处：Obsidian 的默认处理在目标阶段完成
+   * 如果有图片，我们在冒泡阶段拦截并上传
+   * 如果没有图片，完全不影响
    */
   private async handlePaste(event: ClipboardEvent): Promise<void> {
     // 检查是否有剪贴板数据
@@ -79,9 +89,9 @@ export default class AliyunOSSUploadPlugin extends Plugin {
     const items = Array.from(event.clipboardData.items);
     const imageItems = items.filter((item) => item.type.startsWith("image/"));
 
-    // ⚠️ 关键修复：如果没有图片，立即返回，让 Obsidian 正常处理文本粘贴
+    // ⚠️ 关键：如果没有图片，立即返回，完全不影响事件流
     if (imageItems.length === 0) {
-      return; // 不调用 preventDefault，让默认行为继续
+      return;
     }
 
     // 只有在有图片时才拦截
