@@ -1,0 +1,10 @@
+{
+  "id": "image-upload-aliyun-oss",
+  "name": "Aliyun OSS Image Upload",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "自动将拖拽的图片上传到阿里云 OSS，并在文档中插入 Markdown 图片链接",
+  "author": "Your Name",
+  "authorUrl": "https://github.com/yourname",
+  "isDesktopOnly": true
+}

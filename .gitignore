@@ -1,0 +1,21 @@
+# 依赖
+node_modules/
+
+# 构建输出
+main.js
+
+# 日志
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 测试数据
+data.json
